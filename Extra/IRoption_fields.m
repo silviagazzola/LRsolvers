@@ -36,7 +36,8 @@ allfields = {'x0';
     'resflatTol'; 
     'sirt_method'; 
     'GCVweight'; 
-    'GCVflatTol'; 
+    'GCVflatTol';
+    'discrflatTol';
     'GCVminTol'; 
     'tolX'; 
     'stopOut'; 
@@ -69,6 +70,16 @@ allfields = {'x0';
     'inSolver'; 
     'adaptConstr';
     'nonnegativity';
-    'DecompOut'};
+    'DecompOut';
+    'shrink';
+    'stepsize';
+    'backtracking';
+    'backit';
+    'backscalar';
+    'SparsityTrans';
+    'hybridvariant';
+    'wname';
+    'wlevels';
+    'warmrestart'};
 
 

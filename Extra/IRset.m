@@ -256,6 +256,8 @@ switch field
     [validvalue, errmsg] = PosInteger(field,value);
   case {'resflatTol'}% real non-negative scalar
     [validvalue, errmsg] = nonNegscalar(field,value);
+  case {'discrflatTol'}% real non-negative scalar
+    [validvalue, errmsg] = nonNegscalar(field,value);
   case {'LSQRtols'}% real non-negative vector of length 2
     [validvalue, errmsg] = nonNeg2vector(field,value);
   case {'RegParam0'}% real non-negative scalar
@@ -284,6 +286,26 @@ switch field
     [validvalue, errmsg] = onOffType(field,value);
   case{'sirt_method'}
     [validvalue, errmsg] = sirtType(field,value);  
+  case {'shrink'} % off, on
+    [validvalue, errmsg] = onOffType(field,value);
+  case {'stepsize'} % real positive scalar or 'none'
+    [validvalue, errmsg] = positiveScalar2(field,value);
+  case {'backtracking'} % off, on
+    [validvalue, errmsg] = onOffType(field,value);
+  case {'backscalar'}% real non-negative scalar
+    [validvalue, errmsg] = nonNegscalar(field,value);
+  case {'backit'} % real positive integer
+    [validvalue, errmsg] = PosInteger(field,value);
+  case{'SparsityTrans'}
+    [validvalue, errmsg] = SparsityTransType(field,value); 
+  case{'hybridvariant'}
+    [validvalue, errmsg] = hybridvariantType(field,value); 
+  case{'wname'}
+    [validvalue, errmsg] = wnameType(field,value); 
+  case{'wlevels'}
+    [validvalue, errmsg] = PosInteger(field,value); 
+  case{'warmrestart'} % off, on
+    [validvalue, errmsg] = onOffType(field,value);
   otherwise
     %validfield = false;  
     validvalue = false;
@@ -365,6 +387,17 @@ function [valid, errmsg] = onOffType(field,value)
 valid =  ischar(value) && any(strcmp(value,{'on';'off'}));
 if ~valid
   errmsg = sprintf('Invalid value for OPTIONS parameter %s: must be ''off'' or ''on''.',field);
+else
+  errmsg = '';
+end
+
+%-----------------------------------------------------------------------
+
+function [valid, errmsg] = SparsityTransType(field,value)
+% One of these strings: on, off
+valid =  ischar(value) && any(strcmp(value,{'none';'dwt';'dct';'svd'}));
+if ~valid
+  errmsg = sprintf('Invalid value for OPTIONS parameter %s: must be ''none'' or ''dwt'' or ''dct''.',field);
 else
   errmsg = '';
 end
@@ -483,10 +516,10 @@ end%--------------------------------------------------------------------------
 
 function [valid, errmsg] = RegPartype(field,value)
 % One of these: real nonnegative scalar, GCV, WGCV, optimal
-valid =  (isreal(value) && isscalar(value) && (value >= 0)) | (ischar(value) && any(strcmpi(value,{'gcv','wgcv','modgcv','optimal','discrep','off'})));
+valid =  (isreal(value) && isscalar(value) && (value >= 0)) | (ischar(value) && any(strcmpi(value,{'gcv','wgcv','modgcv','optimal','discrep','discrepit','off','none'})));
 
 if ~valid
- errmsg = sprintf('Invalid value for OPTIONS parameter %s: must be a non-negative scalar or ''GCV'' or ''WGCV'' or ''discrep'' or ''optimal''.',field);
+ errmsg = sprintf('Invalid value for OPTIONS parameter %s: must be a non-negative scalar or ''GCV'' or ''WGCV'' or ''discrep'' or ''discrepit'' or ''optimal'' or ''none''.',field);
 else
   errmsg = '';
 end
@@ -621,6 +654,28 @@ function [valid, errmsg] = sirtType(field,value)
 valid =  (ischar(value) && any(strcmpi(value,{'cav';'cimmino';'drop';'landweber';'sart'})));
 if ~valid
   errmsg = sprintf('Invalid value for OPTIONS parameter %s: must be ''cav'' or ''cimmino'' or ''drop'' or ''landweber'' or ''sart''.',field);
+else
+  errmsg = '';
+end
+
+%------------------------------------------------------------------------
+
+function [valid, errmsg] = hybridvariantType(field,value)
+% One of these strings: tv, nn
+valid =  (ischar(value) && any(strcmpi(value,{'I';'R'})));
+if ~valid
+  errmsg = sprintf('Invalid value for OPTIONS inSolver %s: must be ''I'' or ''R''.',field);
+else
+  errmsg = '';
+end
+
+%------------------------------------------------------------------------
+
+function [valid, errmsg] = wnameType(field,value)
+% One of these strings: cav, cimmino, drop, landweber, sart
+valid =  (ischar(value) && any(strcmpi(value,{'db1'})));
+if ~valid
+  errmsg = sprintf('Invalid value for OPTIONS parameter %s: must be ''db1''.',field);
 else
   errmsg = '';
 end
