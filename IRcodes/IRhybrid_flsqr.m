@@ -1,11 +1,11 @@
-function [X, info] = IRhybrid_lsqr(A, b, varargin)
-%IRhybrid_lsqr Hybrid version of LSQR algorithm
+function [X, info] = IRhybrid_flsqr(A, b, varargin)
+%IRhybrid_lsqr Hybrid version of LSQR algorithm [...]
 %
-% options  = IRhybrid_lsqr('defaults')
-% [X,info] = IRhybrid_lsqr(A,b)
-% [X,info] = IRhybrid_lsqr(A,b,K)
-% [X,info] = IRhybrid_lsqr(A,b,options)
-% [X,info] = IRhybrid_lsqr(A,b,K,options)
+% options  = IRhybrid_flsqr('defaults')
+% [X,info] = IRhybrid_flsqr(A,b)
+% [X,info] = IRhybrid_flsqr(A,b,K)
+% [X,info] = IRhybrid_flsqr(A,b,options)
+% [X,info] = IRhybrid_flsqr(A,b,K,options)
 %
 % IRhybrid_lsqr is a hybrid iterative regularization method used for 
 % solving large-scale, ill-posed inverse problems of the form:
@@ -36,7 +36,8 @@ function [X, info] = IRhybrid_lsqr(A, b, varargin)
 %                   [ array | {'none'} ]
 %      RegParam   - a value or a method to find the regularization
 %                   parameter for the projected problems: 
-%                   [  non-neg. scalar | {'wgcv'} | 'gcv' | 'modgcv' | 'discrep' | 'discrepit' ]
+%                   [  non-neg. scalar | {'wgcv'} | 'gcv' | 'modgcv' |...
+%                     'discrep' | 'discrepit' | 'optimal']
 %                   This also determines which stopping rule is used
 %                   If 'gcv', 'wgcv' or 'modgcv' is chosen, the iteration is
 %                     stopped when the GCV function minimum stabilizes or
@@ -45,6 +46,13 @@ function [X, info] = IRhybrid_lsqr(A, b, varargin)
 %                   If 'discrep' is chosen, and NoiseLevel is provided,
 %                     then the discrepancy principle is used as stopping
 %                     (see 'NoiseLevel' and 'eta').
+%                   If 'discrepit' is chosen, and NoiseLevel is provided,
+%                     then the discrepancy principle is used to set the 
+%                     parameter at each iteration, and the stabilization of 
+%                     successive parameters is used as stopping criterion
+%                     (see 'NoiseLevel', 'eta' and 'discrflatTol').
+%                   If 'optimal' is chosen, and x_true is provided,
+%                     no stopping criterion is considered
 %      stopGCV    - stopping criterion for the iterations when GCV is used
 %                   [ 'GCVvalues' | {'resflat'} ]
 %      resflatTol - tolerace for the stabilization of the residual
@@ -82,6 +90,19 @@ function [X, info] = IRhybrid_lsqr(A, b, varargin)
 %      NoStop     - specifies whether the iterations should proceed
 %                   after a stopping criterion is satisfied
 %                   [ 'on' | {'off'} ]
+%   SparsityTrans - sparsity transform for the solution
+%                   [ {'none'} | 'dwt' ]
+%      wname      - discrete wavelet transform name (meaningful if 
+%                   SpartistyTrans is 'dwt')
+%                   [ {'db1'} ]
+%      wlevels    - discrete wavelet transform level (meaningful if 
+%                   SpartistyTrans is 'dwt')
+%                   [ {2} | positive integer]
+%   hybridvariant - kind of hybrid method to be implemented
+%                   [ {'I'} | 'R' ]
+%            tolX - tolerance for the weights (the modulus of the weights 
+%                   cannot be below this threshold
+%                   [ {10^-10} | non-negative scalar ]
 % Note: the options structure can be created using the function IRset. 
 %
 % Outputs:
@@ -116,14 +137,13 @@ function [X, info] = IRhybrid_lsqr(A, b, varargin)
 %      U        - Golub-Kahan bidiagonalization basis vectors
 %      B        - lower bidiagonal matrix computed by Golub-Kahan bidiagonalization
 %
-% See also: IRcgls, IRhybrid_fgmres, IRhybrid_gmres, IRget, IRset
+% See also: IRcgls, IRhybrid_fgmres, IRhybrid_gmres, IRhybrid_flsqr, IRget, IRset
 
+% Julianne Chung, Virginia Tech
 % Silvia Gazzola, University of Bath
-% Per Christian Hansen, Technical University of Denmark
-% James G. Nagy, Emory University
-% April, 2018.
+% June, 2018.
 
-% This file is part of the IR Tools package and is distributed under the 
+% This file extends the IR Tools package and is distributed under the 
 % 3-Clause BSD License. A separate license file should be provided as part 
 % of the package.
 
@@ -131,6 +151,8 @@ function [X, info] = IRhybrid_lsqr(A, b, varargin)
 defaultopt = struct('x0', 'none', 'MaxIter', 100 ,...
     'x_true', 'none', 'NoStop','off', 'IterBar', 'on',...
     'Reorth', 'off', 'RegParam','wgcv',...
+    'SparsityTrans', 'none', 'wname', 'db1', 'wlevels', 2,...
+    'hybridvariant', 'I', 'tolX', 10^-10,...
     'RegMatrix', 'Identity', 'GCVweight', 'adapt',...
     'GCVflatTol', 10^-6, 'GCVminTol', 3,...
     'stopGCV', 'GCVvalues', 'resflatTol', 0.05, 'discrflatTol', 0.9,...
@@ -186,9 +208,9 @@ MaxIter    = IRget(options, 'MaxIter',    [], 'fast');
 RegParam   = IRget(options, 'RegParam',   [], 'fast');
 x_true     = IRget(options, 'x_true',     [], 'fast');
 NoStop     = IRget(options, 'NoStop',     [], 'fast');
-Reorth     = IRget(options, 'Reorth',     [], 'fast');
+% Reorth     = IRget(options, 'Reorth',     [], 'fast');
 IterBar    = IRget(options, 'IterBar',    [], 'fast');
-L          = IRget(options, 'RegMatrix',  [], 'fast');
+% L          = IRget(options, 'RegMatrix',  [], 'fast');
 omega      = IRget(options, 'GCVweight',  [], 'fast');
 stopGCV    = IRget(options, 'stopGCV',    [], 'fast');
 resdegflat = IRget(options, 'resflatTol', [], 'fast');
@@ -201,6 +223,9 @@ RegParamk  = IRget(options, 'RegParam0',  [], 'fast');
 restart    = IRget(options, 'restart',    [], 'fast');
 verbose    = IRget(options, 'verbosity',  [], 'fast');
 DecompOut  = IRget(options, 'DecompOut', [], 'fast');
+tolX      = IRget(options, 'tolX',      [], 'fast');
+SparsityTrans = IRget(options, 'SparsityTrans', [], 'fast');
+hybridvariant = IRget(options, 'hybridvariant', [], 'fast');
 
 verbose = strcmp(verbose, 'on');
 
@@ -220,14 +245,18 @@ if K(end) ~= MaxIter
 end
 % note that there is no control on K, as it does not go through IRset
 
-if strcmp(Reorth,'on')
-    reorth = true; 
-else
-    reorth = false;
-end
+% if strcmp(Reorth,'on')
+%     reorth = true; 
+% else
+%     reorth = false;
+% end
 
 if (strcmp(RegParam,'discrep') || strcmp(RegParam,'discrepit')) && ischar(NoiseLevel)
     error('The noise level (NoiseLevel) must be assigned')
+end
+
+if strcmp(RegParam,'optimal') && ischar(x_true)
+    error('The true solution (x_true) must be assigned')
 end
 
 StopIt = MaxIter;
@@ -250,20 +279,44 @@ d = Atransp_times_vec(A, b);
 n = length(d);
 m = length(b);
 
+if strcmp(SparsityTrans, 'none')
+    Trans = speye(n);
+elseif strcmp(SparsityTrans, 'dwt')
+    wname   = IRget(options, 'wname',   [], 'fast');
+    wlevels = IRget(options, 'wlevels', [], 'fast'); 
+    if wlevels > 1/2*(log2(n))
+        error('The assigned wavelet levels are too high. Make sure that wlevels <= 1/2*(log2(n))')
+    end
+    Trans = FreqMatrix('dwt', [sqrt(n) sqrt(n)], wname, wlevels);
+end
+
 % setting x0
 x0 = IRget(options, 'x0', [], 'fast');
+
+
 if strcmp(x0,'none')
     x0 = zeros(n,1);
     r = b(:); %% check!!
+    precX = ones(n,1);
 else
     try
-        Ax0 = A_times_vec(A, x0);
-        r = b(:) - Ax0;
+        x0 = Trans*x0;
     catch
         error('Check the length of x0')
+    end    
+    if max(abs(x0(:))) == 0
+        r = b;
+        x0 = zeros(n,1);
+        precX = ones(n,1);
+    else
+        Ax0 = A_times_vec(A, x0);
+        r = b(:) - Ax0;
+        precX = x0;
+        precX(abs(precX) < tolX) = eps;
+        precX = sqrt(abs(precX));
     end
 end
-x = x0;
+x = x0; % useful in case we have an immediate breakdown of the algorithm
 beta = norm(r(:)); %% check!!
 nrmb = norm(b(:)); %% check!!
 
@@ -273,60 +326,67 @@ notrue = strcmp(x_true,'none');
 NoStop = strcmp(NoStop,'on');
 
 % assessing if we want inner Tikhonov regularization
+% tik = true;
+if strcmp(RegParam,'off')
+    RegParam = 0;
+end
+% if isscalar(RegParam)
+%     if isempty(NoiseLevel) || strcmp(NoiseLevel,'none')
+%         NoiseLevel = 0;
+%     else
+%         NoiseLevel = eta*NoiseLevel;
+%     end
+% end
 % if strcmp(RegParam,'off')
 %     tik = false;
 % else
 %     tik = true;
 % end
-% tik = true;
-if strcmp(RegParam,'off')
-    RegParam = 0;
-end
-if isscalar(RegParam)
-    if isempty(NoiseLevel) || strcmp(NoiseLevel,'none')
-        NoiseLevel = 0;
-    else
-        NoiseLevel = eta*NoiseLevel;
-    end
-end
 
-% assessing if we want preconditioning
-if strcmp(L,'off') || strcmp(L,'identity')
-    precond = false;
-    Lproject = false;
-elseif ismatrix(L) && ~ischar(L)
-    if size(L,2) ~= n
-        error('The number of columns of the regularization matrix should be the same as the length of x')
-    else
-        if size(L,1) == n
-            precond = true;
-            Lproject = false;
-        else
-            precond = false;
-            Lproject = true;
-            p = size(L, 1);
-            Lk = zeros(p,max(K));
-        end
-    end
-else
-    precond = true;
-    Lproject = false;
-    if strcmpi(L, 'Laplacian1D')
-        L = LaplacianMatrix1D(n);
-    elseif strcmpi(L, 'Laplacian2D')
-        L = LaplacianMatrix2D(n);
-    else
-        error('Invalid string for regularization matrix')
-    end
-end
+Rfactor = strcmpi(hybridvariant, 'R');
+
+% % assessing if we want preconditioning
+% if strcmp(L,'off') || strcmp(L,'identity')
+%     precond = false;
+%     Lproject = false;
+% elseif ismatrix(L) && ~ischar(L)
+%     if size(L,2) ~= n
+%         error('The number of columns of the regularization matrix should be the same as the length of x')
+%     else
+%         if size(L,1) == n
+%             precond = true;
+%             Lproject = false;
+%         else
+%             precond = false;
+%             Lproject = true;
+%             p = size(L, 1);
+%             Lk = zeros(p,max(K));
+%         end
+%     end
+% else
+%     precond = true;
+%     Lproject = false;
+%     if strcmpi(L, 'Laplacian1D')
+%         L = LaplacianMatrix1D(n);
+%     elseif strcmpi(L, 'Laplacian2D')
+%         L = LaplacianMatrix2D(n);
+%     else
+%         error('Invalid string for regularization matrix')
+%     end
+% end
 
 % Declare matrices.
 X                = zeros(n,length(K));
 Xnrm             = zeros(max(K),1);
 Rnrm             = zeros(max(K),1);
 RegParamVect     = zeros(max(K),1);
-B                = zeros(max(K)+1,max(K)); 
-V                = zeros(n, max(K));
+M = zeros(max(K)+1,max(K));
+T = zeros(max(K)+1); 
+Z = zeros(n, max(K));
+V = zeros(n, max(K)+1);
+U = zeros(m, max(K)+1);
+% B                = zeros(max(K)+1,max(K)); 
+% V                = zeros(n, max(K));
 rhs              = zeros(max(K)+1,1); % projected right-hand side
 if restart
     saved_iterations = zeros(1, length(Ktot));
@@ -365,45 +425,72 @@ for k=1:MaxIter
         waitbar(k/MaxIter, h_wait)
     end
     if restart, ktotcount = ktotcount + 1; end
-    w = Atransp_times_vec(A, U(:,k));
-    if precond
-        % w = L' \ w;
-        w = Ptransp_solve(L, w);
-    end
-    if k>1
-        w = w - beta*V(:,k-1);
-    end
-    if reorth
-        for jj = 1:k-1
-            w = w - (V(:,jj)'*w)*V(:,jj);
+    % if k == 1
+        v = Atransp_times_vec(A, U(:,k)); v = v(:);
+    % else
+    % if k>1
+        for i = 1:k-1
+            T(i,k)=V(:,i)'*v;
+            v = v - T(i,k)*V(:,i);
         end
+    % end
+    T(k,k) = norm(v);
+    v = v / T(k,k);
+    %
+    z = precX.*v;
+    u = A_times_vec(A, z); u = u(:);
+    for i = 1:k
+        M(i,k) = U(:,i)'*u;
+        u = u - M(i,k)*U(:,i);
     end
-    alpha = norm(w);
-    V(:,k) = w/alpha;
-    u = V(:,k);
-    if precond
-        % u = L \ u;
-        u = P_solve(L, u);
-    end
-    u = A_times_vec(A, u);
-    u = u - alpha*U(:,k);
-    if reorth
-        for jj = 1:k-1
-            u = u - (U(:,jj)'*u)*U(:,jj);
-        end
-    end
-    beta = norm(u);
-    U(:,k+1) = u/beta;
-    B(k,k) = alpha;
-    B(k+1,k) = beta;
+    M(k+1,k) = norm(u);
+    u = u / M(k+1,k);
+    U(:,k+1) = u;
+    V(:,k) = v;
+    Z(:,k) = z;
+    
+    
+%     w = Atransp_times_vec(A, U(:,k));
+% %     if precond
+% %         % w = L' \ w;
+% %         w = Ptransp_solve(L, w);
+% %     end
+%     if k>1
+%         w = w - beta*V(:,k-1);
+%     end
+%     if reorth
+%         for jj = 1:k-1
+%             w = w - (V(:,jj)'*w)*V(:,jj);
+%         end
+%     end
+%     alpha = norm(w);
+%     V(:,k) = w/alpha;
+%     u = V(:,k);
+% %     if precond
+% %         % u = L \ u;
+% %         u = P_solve(L, u);
+% %     end
+%     u = A_times_vec(A, u);
+%     u = u - alpha*U(:,k);
+%     if reorth
+%         for jj = 1:k-1
+%             u = u - (U(:,jj)'*u)*U(:,jj);
+%         end
+%     end
+%     beta = norm(u);
+%     U(:,k+1) = u/beta;
+%     B(k,k) = alpha;
+%     B(k+1,k) = beta;
     rhsk = rhs(1:k+1); % current projected rhs
     
     
-    if abs(alpha) <= eps || abs(beta) <= eps
+    if abs(T(k,k)) <= eps || abs(M(k+1,k)) <= eps
         if verbose
-            disp('Golub-Kahan bidiagonalization breaks down')
+            disp('Flexible Golub-Kahan bidiagonalization breaks down')
         end
-        B = B(1:k+1,1:k);
+        M = M(1:k+1,1:k);
+        T = T(1:k,1:k);
+        Z = Z(:,1:k);
         V = V(:,1:k);
         U = U(:,1:k+1);
         X(:,j+1) = x;
@@ -433,26 +520,43 @@ for k=1:MaxIter
         end
         break
     end
-    Bk = B(1:k+1,1:k);
-    [Uk, Sk, Vk] = svd(Bk);
+    Mk = M(1:k+1,1:k);
+    [Uk, Sk, Vk] = svd(Mk);
     if k==1
         Sk = Sk(1,1);
     else
         Sk = diag(Sk);
     end
     rhskhat = Uk'*rhsk;
-    lsqr_res = abs(rhskhat(k+1))/nrmb;
-    if Lproject
-        Lk(:,k) = L*V(:,k);
+    flsqr_res = abs(rhskhat(k+1))/nrmb;
+%     if Lproject
+%         Lk(:,k) = L*V(:,k);
+%         % update the Householder-QR factorization of Lk
+%         if k == 1
+%             [LUk, LRk] = householderQR(Lk(:,1:k));
+%         else
+%             [LUk, LRk] = upd_householderQR(Lk(:,1:k-1),...
+%             Lk(:,k), LUk, LRk);
+%         end
+%         LRksq = LRk(1:k,1:k);
+%         [Uk, Vk, ~, Ck, Sk] = gsvd(Bk, LRksq);
+%         rhskhat = Uk'*rhsk;
+%         if k==1
+%             gammak = Ck(1)/Sk(1);
+%         else
+%             gammak = sqrt(diag(Ck'*Ck)./diag(Sk'*Sk));
+%         end
+%     end
+    if Rfactor
         % update the Householder-QR factorization of Lk
         if k == 1
-            [LUk, LRk] = householderQR(Lk(:,1:k));
+            [ZUk, ZRk] = householderQR(Z(:,1:k));
         else
-            [LUk, LRk] = upd_householderQR(Lk(:,1:k-1),...
-            Lk(:,k), LUk, LRk);
+            [ZUk, ZRk] = upd_householderQR(Z(:,1:k-1),...
+            Z(:,k), ZUk, ZRk);
         end
-        LRksq = LRk(1:k,1:k);
-        [Uk, Vk, ~, Ck, Sk] = gsvd(Bk, LRksq);
+        ZRksq = ZRk(1:k,1:k);
+        [Uk, Vk, ~, Ck, Sk] = gsvd(Mk, ZRksq);
         rhskhat = Uk'*rhsk;
         if k==1
             gammak = Ck(1)/Sk(1);
@@ -460,7 +564,7 @@ for k=1:MaxIter
             gammak = sqrt(diag(Ck'*Ck)./diag(Sk'*Sk));
         end
     else
-        LRksq = eye(k);
+        ZRksq = eye(k);
     end
     
     % if tik
@@ -472,16 +576,20 @@ for k=1:MaxIter
                 RegParamVect(k) = RegParamk;
             end
         elseif strcmp(RegParam, 'discrepit')
-            if lsqr_res > eta*NoiseLevel
+            if flsqr_res > eta*NoiseLevel
                 RegParamk = 0;
                 RegParamVect(k) = RegParamk; 
             else
-                RegParamk = fzero(@(l)discrfcn(l, Bk, LRksq, rhsk, eta*NoiseLevel), [0, 1e10]);
+                RegParamk = fzero(@(l)discrfcn(l, Mk, ZRksq, rhsk, eta*NoiseLevel), [0, 1e10]);
                 RegParamVect(k) = RegParamk; 
             end
+        elseif strcmp(RegParam, 'optimal')
+            optfun = @(l)TikOptParam(l, Mk, ZRksq, rhsk, x0, Z(:,1:k), Trans, x_true);
+            RegParamk = fmincon(optfun,0,[],[],[],[],0,.1);
+            RegParamVect(k) = RegParamk; 
         elseif strcmp(RegParam,'wgcv')
             if k>1
-            if ~Lproject
+            if ~Rfactor
                 if adaptWGCV 
                     %Use the adaptive, weighted GCV method
                     Omega(k) = min(1, findomega(rhskhat, Sk));
@@ -489,7 +597,6 @@ for k=1:MaxIter
                 end
                 RegParamk = fminbnd('TikGCV', 0, Sk(1), [], rhskhat, Sk, omega);
                 GCValk = GCVstopfun(RegParamk, Uk(1,:)', Sk, nrmb, m, n);
-                
             else
                 if adaptWGCV 
                     %Use the adaptive, weighted GCV method
@@ -506,7 +613,7 @@ for k=1:MaxIter
             RegParamVect(k) = RegParamk; GCV(k) = GCValk;
             end
         elseif strcmp(RegParam,'gcv')
-            if ~Lproject
+            if ~Rfactor
                 RegParamk = fminbnd('TikGCV', 0, Sk(1), [], rhskhat, Sk);
                 GCValk = GCVstopfun(RegParamk, Uk(1,:)', Sk, nrmb, m, n);
             else
@@ -516,7 +623,7 @@ for k=1:MaxIter
             RegParamVect(k) = RegParamk;
             GCV(k) = GCValk;
         elseif strcmp(RegParam,'modgcv')
-            if ~Lproject
+            if ~Rfactor
                 RegParamk = fminbnd('TikGCV', 0, Sk(1), [], rhskhat, Sk, m);
                 GCValk = GCVstopfun(RegParamk, Uk(1,:)', Sk, nrmb, m, n);
             else
@@ -528,20 +635,30 @@ for k=1:MaxIter
         else
             error('Invalid parameter choice method')
         end
-        if ~Lproject
+        if ~Rfactor
             Dk = Sk.^2 + RegParamk^2;
+            % Dk = Sk.^2 + RegParamk;
             rhskhat = Sk .* rhskhat(1:k);
             yhat = rhskhat(1:k)./Dk;
             y = Vk * yhat;
+%             MZk = [Mk; RegParamk*eye(k)];
+%             rhsZk = [rhsk; zeros(k,1)];
+%             y = MZk\rhsZk;
         else
-            BLk = [Bk; RegParamk*LRksq(1:k,:)];
-            rhsLk = [rhsk; zeros(k,1)];
-            y = BLk\rhsLk;
+            MZk = [Mk; RegParamk*ZRksq(1:k,:)];
+            % MZk = [Mk; sqrt(RegParamk)*ZRksq(1:k,:)];
+            rhsZk = [rhsk; zeros(k,1)];
+            y = MZk\rhsZk;
         end
-        Rnrm(k) = norm(rhsk - Bk*y)/nrmb;
-        d = V(:,1:k)*y;
-        if precond, d = P_solve(L, d); end
+        Rnrm(k) = norm(rhsk - Mk*y)/nrmb;
+        d = Z(:,1:k)*y;
+%         if precond, d = P_solve(L, d); end
         x = x0 + d;
+        precX = abs(x);
+        precX(precX < tolX) = eps;
+        precX = sqrt(precX);
+        % back-transform the solution
+        x = Trans'*x;
         % Compute norms
         Xnrm(k) = norm(x(:));
         if errornorms
@@ -593,8 +710,10 @@ for k=1:MaxIter
                 Xnrm    = Xnrm(1:k);
                 Rnrm    = Rnrm(1:k);
                 RegParamVect    = RegParamVect(1:k);
+                M = M(1:k+1,1:k);
+                T = T(1:k,1:k);
+                Z = Z(:,1:k);
                 V = V(:,1:k);
-                B = B(1:k+1,1:k);
                 U = U(:,1:k+1);
                 X = X(:,1:j);
                 saved_iterations = saved_iterations(1:j);
@@ -606,7 +725,90 @@ for k=1:MaxIter
             end
         end       
         % update parameters, check stopping criteria
-        if strcmp(RegParam,'discrep')
+        if isscalar(RegParam)
+        % Purely iterative method case.
+        if strcmp(NoiseLevel, 'none')
+            if k>1
+            if abs((Rnrm(k)-Rnrm(k-1)))/Rnrm(k-1) < resdegflat && ...
+                Rnrm(k) == min(Rnrm(1:k)) && StopIt == MaxIter
+                if verbose
+                    disp('The stopping criterion for fgmres is satisfied')
+                end
+                % Stop because the residual stabilizes.
+                StopFlag = 'The residual norm stabilizes';
+                if ~AlreadySaved && ~NoStop
+                    j = j+1;
+                    X(:,j) = x;
+                    if restart
+                        saved_iterations(j) = ktotcount;
+                    else
+                        saved_iterations(j) = k;
+                    end
+                    AlreadySaved = 1;
+                end
+                StopIt = k;
+                StopReg.RegP = RegParamk;
+                StopReg.It = k;
+                StopReg.X = x;
+                if errornorms, StopReg.Enrm = Enrm(k); end
+                if ~ NoStop
+                    Xnrm    = Xnrm(1:k);
+                    Rnrm    = Rnrm(1:k);
+                    RegParamVect = RegParamVect(1:k);
+                    M = M(1:k+1,1:k);
+                    T = T(1:k,1:k);
+                    Z = Z(:,1:k);
+                    V = V(:,1:k);
+                    U = U(:,1:k+1);
+                    if errornorms, Enrm = Enrm(1:k); end
+                    X = X(:,1:j);
+                    saved_iterations = saved_iterations(1:j);
+                    break
+                end
+            end
+            end
+        else
+            if Rnrm(k) < eta*NoiseLevel
+            % Stopping criterion.
+            if StopIt == MaxIter
+                if verbose
+                    disp('The discrepancy principle is satisfied')
+                end
+                StopFlag = 'The discrepancy principle satisfied';
+                if ~AlreadySaved && ~NoStop
+                    j = j+1;
+                    X(:,j) = x;
+                    if restart
+                        saved_iterations(j) = ktotcount;
+                    else
+                        saved_iterations(j) = k;
+                    end
+                    AlreadySaved = 1;
+                end
+                StopIt = k;
+                StopReg.RegP = RegParamk;
+                StopReg.It = k;
+                StopReg.X = x;
+                if errornorms, StopReg.Enrm = Enrm(k); end
+                if ~ NoStop
+                    Xnrm    = Xnrm(1:k);
+                    Rnrm    = Rnrm(1:k);
+                    RegParamVect    = RegParamVect(1:k);
+                    M = M(1:k+1,1:k);
+                    T = T(1:k,1:k);
+                    Z = Z(:,1:k);
+                    V = V(:,1:k);
+                    U = U(:,1:k+1);
+                    if errornorms, Enrm = Enrm(1:k); end
+                    X = X(:,1:j);
+                    saved_iterations = saved_iterations(1:j);
+                    % Stop because the discrepancy principle is satisfied.
+                    break
+                end
+            end
+            end
+        end
+        elseif strcmp(RegParam,'discrep')
             if Rnrm(k) < eta*NoiseLevel
                 % stopping criterion
                 if StopIt == MaxIter % the method has not stopped, yet
@@ -635,8 +837,10 @@ for k=1:MaxIter
                         Xnrm    = Xnrm(1:k);
                         Rnrm    = Rnrm(1:k);
                         RegParamVect    = RegParamVect(1:k);
+                        M = M(1:k+1,1:k);
+                        T = T(1:k,1:k);
+                        Z = Z(:,1:k);
                         V = V(:,1:k);
-                        B = B(1:k+1,1:k);
                         U = U(:,1:k+1);
                         if errornorms, Enrm = Enrm(1:k); end
                         X = X(:,1:j);
@@ -644,17 +848,24 @@ for k=1:MaxIter
                         % stop because the discrepancy principle is satisfied
                         break
                     else
-                        RegParamk = abs((eta*NoiseLevel - lsqr_res)/(Rnrm(k) - lsqr_res))*(RegParamk^2);
+                        RegParamk = abs((eta*NoiseLevel - flsqr_res)/(Rnrm(k) - flsqr_res))*(RegParamk^2);
+                        % RegParamk = RegParamk^2; 
+                        % RegParamk = abs((eta*NoiseLevel - flsqr_res)/(Rnrm(k) - flsqr_res))^2*RegParamk;
+                        % RegParamk = abs((eta*NoiseLevel - flsqr_res)/(Rnrm(k) - flsqr_res))*RegParamk;
                         RegParamk = sqrt(RegParamk);
                         if k~=MaxIter, RegParamVect(k+1) = RegParamk; end
                     end
                 else
-                    RegParamk = abs((eta*NoiseLevel - lsqr_res)/(Rnrm(k) - lsqr_res))*(RegParamk^2);
+                    RegParamk = abs((eta*NoiseLevel - flsqr_res)/(Rnrm(k) - flsqr_res))*(RegParamk^2);
+                    % RegParamk = RegParamk^2; 
+                    % RegParamk = abs((eta*NoiseLevel - flsqr_res)/(Rnrm(k) - flsqr_res))*RegParamk;
                     RegParamk = sqrt(RegParamk);
                     if k~=MaxIter, RegParamVect(k+1) = RegParamk; end
                 end
             else
-                RegParamk = abs((eta*NoiseLevel - lsqr_res)/(Rnrm(k) - lsqr_res))*(RegParamk^2);
+                RegParamk = abs((eta*NoiseLevel - flsqr_res)/(Rnrm(k) - flsqr_res))*(RegParamk^2);
+                % RegParamk = RegParamk^2; 
+                % RegParamk = abs((eta*NoiseLevel - flsqr_res)/(Rnrm(k) - flsqr_res))*RegParamk;
                 RegParamk = sqrt(RegParamk);
                 if k~=MaxIter, RegParamVect(k+1) = RegParamk; end
             end
@@ -688,7 +899,9 @@ for k=1:MaxIter
                             Xnrm    = Xnrm(1:k);
                             Rnrm    = Rnrm(1:k);
                             RegParamVect    = RegParamVect(1:k);
-                            B = B(1:k+1,1:k);
+                            M = M(1:k+1,1:k);
+                            T = T(1:k,1:k);
+                            Z = Z(:,1:k);
                             V = V(:,1:k);
                             U = U(:,1:k+1);
                             if errornorms, Enrm = Enrm(1:k); end
@@ -703,8 +916,8 @@ for k=1:MaxIter
         elseif strcmp(RegParam,'wgcv') || strcmp(RegParam,'gcv') || strcmp(RegParam,'modgcv')
             % check the stopping criterion (all the possibilities)
             if k > 1
-            if StopIt == MaxIter % the method has not stopped, yet
             if strcmpi(stopGCV, 'GCVvalues')
+                if StopIt == MaxIter % the method has not stopped, yet
                 if abs((GCV(k)-GCV(k-1)))/GCV(2) < degflat && StopIt == MaxIter
                 % the method has not stopped, yet
                         if verbose
@@ -733,8 +946,10 @@ for k=1:MaxIter
                             Xnrm    = Xnrm(1:k);
                             Rnrm    = Rnrm(1:k);
                             RegParamVect    = RegParamVect(1:k);
+                            M = M(1:k+1,1:k);
+                            T = T(1:k,1:k);
+                            Z = Z(:,1:k);
                             V = V(:,1:k);
-                            B = B(1:k+1,1:k);
                             U = U(:,1:k+1);
                             if errornorms, Enrm = Enrm(1:k); end
                             X = X(:,1:j);
@@ -782,8 +997,10 @@ for k=1:MaxIter
                             Xnrm    = Xnrm(1:k_save);
                             Rnrm    = Rnrm(1:k_save);
                             RegParamVect    = RegParamVect(1:k_save);
+                            M = M(1:k_save+1,1:k_save);
+                            T = T(1:k_save,1:k_save);
+                            Z = Z(:,1:k_save);
                             V = V(:,1:k_save);
-                            B = B(1:k_save+1,1:k_save);
                             U = U(:,1:k_save+1);
                             if errornorms
                                 Enrm = Enrm(1:k_save);
@@ -794,32 +1011,31 @@ for k=1:MaxIter
                                     BestReg.Rnrm = Rnrm(BestReg.It);
                                     % recompute the best solution again
                                     ktemp = BestReg.It;
-                                    Btemp = B(1:ktemp+1,1:ktemp);
-                                    Vtemp = V(:,1:ktemp);
+                                    Mtemp = M(1:ktemp+1,1:ktemp);
+                                    Ztemp = Z(:,1:ktemp);
                                     rhsk = rhs(1:ktemp+1);
-                                    [Uk, Sk, Vk] = svd(Btemp);
+                                    [Uk, Sk, Vk] = svd(Mtemp);
                                     if ktemp==1
                                         Sk = Sk(1,1);
                                     else
                                         Sk = diag(Sk);
                                     end
                                     rhskhat = Uk'*rhsk;
-                                    if Lproject
-                                        Lk = L*Vtemp;
-                                        [~, LRksq] = qr(Lk,0);
+                                    if Rfactor
+                                        [~, ZRksq] = qr(Ztemp,0);
                                     end
-                                    if ~Lproject
+                                    if ~Rfactor
                                         Dk = Sk.^2 + RegParamk^2;
                                         rhskhat = Sk .* rhskhat(1:ktemp);
                                         yhat = rhskhat(1:ktemp)./Dk;
                                         y = Vk * yhat;
                                     else
-                                        HLk = [Htemp; RegParamk*LRksq];
+                                        HLk = [Htemp; RegParamk*ZRksq];
                                         rhsLk = [rhsk; zeros(ktemp,1)];
                                         y = HLk\rhsLk;
                                     end
-                                    dtemp = Vtemp*y;
-                                    if precond, dtemp = P_solve(L, dtemp); end
+                                    dtemp = Ztemp*y;
+%                                     if precond, dtemp = P_solve(L, dtemp); end
                                     xtemp = x0 + dtemp;
                                     BestReg.X = xtemp;
                                 end
@@ -864,8 +1080,10 @@ for k=1:MaxIter
                         Xnrm    = Xnrm(1:k);
                         Rnrm    = Rnrm(1:k);
                         RegParamVect    = RegParamVect(1:k);
+                        M = M(1:k+1,1:k);
+                        T = T(1:k,1:k);
+                        Z = Z(:,1:k);
                         V = V(:,1:k);
-                        B = B(1:k+1,1:k);
                         U = U(:,1:k+1);
                         if errornorms, Enrm = Enrm(1:k); end
                         X = X(:,1:j);
@@ -873,88 +1091,9 @@ for k=1:MaxIter
                         break
                     end
                 end
-            end
-            end
-            end
-        elseif isscalar(RegParam)
-        % Purely iterative method case.
-        if strcmp(NoiseLevel, 'none')
-            if k>1
-            if abs((Rnrm(k)-Rnrm(k-1)))/Rnrm(k-1) < resdegflat && ...
-                Rnrm(k) == min(Rnrm(1:k)) && StopIt == MaxIter
-                if verbose
-                    disp('The stopping criterion for fgmres is satisfied')
-                end
-                % Stop because the residual stabilizes.
-                StopFlag = 'The residual norm stabilizes';
-                if ~AlreadySaved && ~NoStop
-                    j = j+1;
-                    X(:,j) = x;
-                    if restart
-                        saved_iterations(j) = ktotcount;
-                    else
-                        saved_iterations(j) = k;
-                    end
-                    AlreadySaved = 1;
-                end
-                StopIt = k;
-                StopReg.RegP = RegParamk;
-                StopReg.It = k;
-                StopReg.X = x;
-                if errornorms, StopReg.Enrm = Enrm(k); end
-                if ~ NoStop
-                    Xnrm    = Xnrm(1:k);
-                    Rnrm    = Rnrm(1:k);
-                    RegParamVect = RegParamVect(1:k);
-                    B = B(1:k+1,1:k);
-                    U = U(:,1:k);
-                    V = V(:,1:k+1);
-                    if errornorms, Enrm = Enrm(1:k); end
-                    X = X(:,1:j);
-                    saved_iterations = saved_iterations(1:j);
-                    break
                 end
             end
             end
-        else
-            if Rnrm(k) < eta*NoiseLevel
-            % Stopping criterion.
-            if StopIt == MaxIter
-                if verbose
-                    disp('The discrepancy principle is satisfied')
-                end
-                StopFlag = 'The discrepancy principle satisfied';
-                if ~AlreadySaved && ~NoStop
-                    j = j+1;
-                    X(:,j) = x;
-                    if restart
-                        saved_iterations(j) = ktotcount;
-                    else
-                        saved_iterations(j) = k;
-                    end
-                    AlreadySaved = 1;
-                end
-                StopIt = k;
-                StopReg.RegP = RegParamk;
-                StopReg.It = k;
-                StopReg.X = x;
-                if errornorms, StopReg.Enrm = Enrm(k); end
-                if ~ NoStop
-                    Xnrm    = Xnrm(1:k);
-                    Rnrm    = Rnrm(1:k);
-                    RegParamVect    = RegParamVect(1:k);
-                    B = B(1:k+1,1:k);
-                    V = V(:,1:k);
-                    U = U(:,1:k+1);
-                    if errornorms, Enrm = Enrm(1:k); end
-                    X = X(:,1:j);
-                    saved_iterations = saved_iterations(1:j);
-                    % Stop because the discrepancy principle is satisfied.
-                    break
-                end
-            end
-            end
-        end
 %         elseif isscalar(RegParam)
 %             if StopIt == MaxIter
 %             if Rnrm(k) < NoiseLevel
@@ -985,8 +1124,10 @@ for k=1:MaxIter
 %                     Xnrm    = Xnrm(1:k);
 %                     Rnrm    = Rnrm(1:k);
 %                     RegParamVect    = RegParamVect(1:k);
+%                     M = M(1:k+1,1:k);
+%                     T = T(1:k,1:k);
+%                     Z = Z(:,1:k);
 %                     V = V(:,1:k);
-%                     B = B(1:k+1,1:k);
 %                     U = U(:,1:k+1);
 %                     if errornorms, Enrm = Enrm(1:k); end
 %                     X = X(:,1:j);
@@ -1023,8 +1164,10 @@ if k == MaxIter
         Xnrm    = Xnrm(1:k);
         Rnrm    = Rnrm(1:k);
         RegParamVect    = RegParamVect(1:k);
+        M = M(1:k+1,1:k);
+        T = T(1:k,1:k);
+        Z = Z(:,1:k);
         V = V(:,1:k);
-        B = B(1:k+1,1:k);
         U = U(:,1:k+1);
         if errornorms, Enrm = Enrm(1:k); end
         X = X(:,1:j);
@@ -1054,7 +1197,9 @@ if nargout==2
   if strcmp(DecompOut,'on')
       info.V = V;
       info.U = U;
-      info.B = B;
+      info.Z = Z;
+      info.T = T;
+      info.M = M;
   end
   if restart
       info.ktotcount = ktotcount;
@@ -1160,3 +1305,4 @@ v2 = sum(v1.* abs((tt.^3)));
 % Now compute omega.
 %
 omega = (m*alpha2*v2)/(t1*t3 + t4*(t5 + t0));
+
