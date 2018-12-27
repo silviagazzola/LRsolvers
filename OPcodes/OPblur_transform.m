@@ -25,7 +25,7 @@ function vout = OPblur_transform(vin, A, W, transp_flag)
 if m == 1
     n = sqrt(n);
 end
-if strcmpi(tflag,'size')
+if strcmpi(transp_flag,'size')
     vout(1) = n;
     vout(2) = n;
 elseif strcmp(transp_flag, 'notransp')
