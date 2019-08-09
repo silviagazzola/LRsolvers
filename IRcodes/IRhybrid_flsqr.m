@@ -143,9 +143,6 @@ function [X, info] = IRhybrid_flsqr(A, b, varargin)
 % Silvia Gazzola, University of Bath
 % June, 2018.
 
-% This file extends the IR Tools package and is distributed under the 
-% 3-Clause BSD License. A separate license file should be provided as part 
-% of the package.
 
 % Initialization
 defaultopt = struct('x0', 'none', 'MaxIter', 100 ,...
@@ -290,6 +287,9 @@ elseif strcmp(SparsityTrans, 'dwt')
     Trans = FreqMatrix('dwt', [sqrt(n) sqrt(n)], wname, wlevels);
 end
 
+
+% d = Trans'*d;
+
 % setting x0
 x0 = IRget(options, 'x0', [], 'fast');
 
@@ -309,6 +309,7 @@ else
         x0 = zeros(n,1);
         precX = ones(n,1);
     else
+        x0 = Trans'*x0;
         Ax0 = A_times_vec(A, x0);
         r = b(:) - Ax0;
         precX = x0;
@@ -427,6 +428,7 @@ for k=1:MaxIter
     if restart, ktotcount = ktotcount + 1; end
     % if k == 1
         v = Atransp_times_vec(A, U(:,k)); v = v(:);
+        v = Trans*v;
     % else
     % if k>1
         for i = 1:k-1
@@ -438,7 +440,8 @@ for k=1:MaxIter
     v = v / T(k,k);
     %
     z = precX.*v;
-    u = A_times_vec(A, z); u = u(:);
+    u = Trans'*z;                     %%%%
+    u = A_times_vec(A, u); u = u(:);  %%%%
     for i = 1:k
         M(i,k) = U(:,i)'*u;
         u = u - M(i,k)*U(:,i);
