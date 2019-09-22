@@ -53,14 +53,17 @@ maxit=150;
 K = [1, 10:10:maxit];
 %% run LSQR and FLSQR (no regularization)
 [X_LSQR, info_LSQR] = IRhybrid_lsqr(A, bn, K, opt);
-[X_FLSQR, info_FLSQR] = IRhybrid_flsqr(Afcn, bntransf, K, opt);
+% [X_FLSQR, info_FLSQR] = IRhybrid_flsqr(Afcn, bntransf, K, opt);
+[X_FLSQR, info_FLSQR] = IRhybrid_flsqr(A, bn, K, opt);
 %% run FLSQR-I
 opt = IRset(opt, 'RegParam', 'discrep');
-[X_FLSQRi, info_FLSQRi] = IRhybrid_flsqr(Afcn, bntransf, K, opt);
+% [X_FLSQRi, info_FLSQRi] = IRhybrid_flsqr(Afcn, bntransf, K, opt);
+[X_FLSQRi, info_FLSQRi] = IRhybrid_flsqr(A, bn, K, opt);
 %% run FLSQR-R
 opt = IRset(opt, 'hybridvariant', 'R');
 % secant update parameter choice
-[X_FLSQRr, info_FLSQRr] = IRhybrid_flsqr(Afcn, bntransf, K, opt);
+% [X_FLSQRr, info_FLSQRr] = IRhybrid_flsqr(Afcn, bntransf, K, opt);
+[X_FLSQRr, info_FLSQRr] = IRhybrid_flsqr(A, bn, K, opt);
 %% run FAT-I
 opt = IRset(opt, 'hybridvariant', 'I');
 [X_FAT, info_FAT] = IRhybrid_fgmres(Afcn, bntransf, K, opt);
