@@ -77,9 +77,6 @@ function [X, info] = IRhybrid_flsqr(A, b, varargin)
 %                   [ {1} | positive scalar ]
 %      MaxIter    - maximum number of iterations
 %                   [ {'none'} | positive integer ]
-%      RegMatrix  - priorconditioner for the iterations
-%                   [ {'identity'} | 'Laplacian1D' | 'Laplacian2D' |
-%                   square nonsingular matrix | function handle ]
 %      DecompOut  - returns the Golub-Kahan decomposition to the user
 %                   [ 'on' | {'off'} ]
 %      Reorth     - indicates if reorthogonalization should be
@@ -207,7 +204,6 @@ x_true     = IRget(options, 'x_true',     [], 'fast');
 NoStop     = IRget(options, 'NoStop',     [], 'fast');
 % Reorth     = IRget(options, 'Reorth',     [], 'fast');
 IterBar    = IRget(options, 'IterBar',    [], 'fast');
-% L          = IRget(options, 'RegMatrix',  [], 'fast');
 omega      = IRget(options, 'GCVweight',  [], 'fast');
 stopGCV    = IRget(options, 'stopGCV',    [], 'fast');
 resdegflat = IRget(options, 'resflatTol', [], 'fast');
@@ -331,50 +327,8 @@ NoStop = strcmp(NoStop,'on');
 if strcmp(RegParam,'off')
     RegParam = 0;
 end
-% if isscalar(RegParam)
-%     if isempty(NoiseLevel) || strcmp(NoiseLevel,'none')
-%         NoiseLevel = 0;
-%     else
-%         NoiseLevel = eta*NoiseLevel;
-%     end
-% end
-% if strcmp(RegParam,'off')
-%     tik = false;
-% else
-%     tik = true;
-% end
 
 Rfactor = strcmpi(hybridvariant, 'R');
-
-% % assessing if we want preconditioning
-% if strcmp(L,'off') || strcmp(L,'identity')
-%     precond = false;
-%     Lproject = false;
-% elseif ismatrix(L) && ~ischar(L)
-%     if size(L,2) ~= n
-%         error('The number of columns of the regularization matrix should be the same as the length of x')
-%     else
-%         if size(L,1) == n
-%             precond = true;
-%             Lproject = false;
-%         else
-%             precond = false;
-%             Lproject = true;
-%             p = size(L, 1);
-%             Lk = zeros(p,max(K));
-%         end
-%     end
-% else
-%     precond = true;
-%     Lproject = false;
-%     if strcmpi(L, 'Laplacian1D')
-%         L = LaplacianMatrix1D(n);
-%     elseif strcmpi(L, 'Laplacian2D')
-%         L = LaplacianMatrix2D(n);
-%     else
-%         error('Invalid string for regularization matrix')
-%     end
-% end
 
 % Declare matrices.
 X                = zeros(n,length(K));
@@ -452,38 +406,6 @@ for k=1:MaxIter
     V(:,k) = v;
     Z(:,k) = z;
     
-    
-%     w = Atransp_times_vec(A, U(:,k));
-% %     if precond
-% %         % w = L' \ w;
-% %         w = Ptransp_solve(L, w);
-% %     end
-%     if k>1
-%         w = w - beta*V(:,k-1);
-%     end
-%     if reorth
-%         for jj = 1:k-1
-%             w = w - (V(:,jj)'*w)*V(:,jj);
-%         end
-%     end
-%     alpha = norm(w);
-%     V(:,k) = w/alpha;
-%     u = V(:,k);
-% %     if precond
-% %         % u = L \ u;
-% %         u = P_solve(L, u);
-% %     end
-%     u = A_times_vec(A, u);
-%     u = u - alpha*U(:,k);
-%     if reorth
-%         for jj = 1:k-1
-%             u = u - (U(:,jj)'*u)*U(:,jj);
-%         end
-%     end
-%     beta = norm(u);
-%     U(:,k+1) = u/beta;
-%     B(k,k) = alpha;
-%     B(k+1,k) = beta;
     rhsk = rhs(1:k+1); % current projected rhs
     
     
@@ -532,24 +454,7 @@ for k=1:MaxIter
     end
     rhskhat = Uk'*rhsk;
     flsqr_res = abs(rhskhat(k+1))/nrmb;
-%     if Lproject
-%         Lk(:,k) = L*V(:,k);
-%         % update the Householder-QR factorization of Lk
-%         if k == 1
-%             [LUk, LRk] = householderQR(Lk(:,1:k));
-%         else
-%             [LUk, LRk] = upd_householderQR(Lk(:,1:k-1),...
-%             Lk(:,k), LUk, LRk);
-%         end
-%         LRksq = LRk(1:k,1:k);
-%         [Uk, Vk, ~, Ck, Sk] = gsvd(Bk, LRksq);
-%         rhskhat = Uk'*rhsk;
-%         if k==1
-%             gammak = Ck(1)/Sk(1);
-%         else
-%             gammak = sqrt(diag(Ck'*Ck)./diag(Sk'*Sk));
-%         end
-%     end
+
     if Rfactor
         % update the Householder-QR factorization of Lk
         if k == 1
@@ -655,7 +560,6 @@ for k=1:MaxIter
         end
         Rnrm(k) = norm(rhsk - Mk*y)/nrmb;
         d = Z(:,1:k)*y;
-%         if precond, d = P_solve(L, d); end
         x = x0 + d;
         precX = abs(x);
         precX(precX < tolX) = eps;
@@ -1097,50 +1001,7 @@ for k=1:MaxIter
                 end
             end
             end
-%         elseif isscalar(RegParam)
-%             if StopIt == MaxIter
-%             if Rnrm(k) < NoiseLevel
-%                 if verbose
-%                     disp('The stopping criterion (discrepancy principle) for the iterations is satisfied')
-%                 end
-%                 % stop because discrepancy (i.e., residual for the
-%                 % regularized problem) stabilizes
-%                 StopFlag = 'the discrepancy principle is satisfied';
-%                 if ~AlreadySaved && ~NoStop
-%                     j = j+1;
-%                     X(:,j) = x;
-%                     if restart
-%                         saved_iterations(j) = ktotcount;
-%                     else
-%                         saved_iterations(j) = k;
-%                     end
-%                     AlreadySaved = 1;
-%                 end
-%                 StopIt = k;
-%                 StopReg.X = x;
-%                 StopReg.It = k;
-%                 StopReg.RegP = RegParamk;
-%                 StopReg.Xnrm = Xnrm(k);
-%                 StopReg.Rnrm = Rnrm(k);
-%                 if errornorms, StopReg.Enrm = Enrm(k); end
-%                 if ~ NoStop
-%                     Xnrm    = Xnrm(1:k);
-%                     Rnrm    = Rnrm(1:k);
-%                     RegParamVect    = RegParamVect(1:k);
-%                     M = M(1:k+1,1:k);
-%                     T = T(1:k,1:k);
-%                     Z = Z(:,1:k);
-%                     V = V(:,1:k);
-%                     U = U(:,1:k+1);
-%                     if errornorms, Enrm = Enrm(1:k); end
-%                     X = X(:,1:j);
-%                     saved_iterations = saved_iterations(1:j);
-%                     break
-%                 end
-%             end
-%             end
         end
-    % end
 end
 if k == MaxIter 
     if StopIt == MaxIter
@@ -1198,11 +1059,11 @@ if nargout==2
     info.GCValues = GCV(1:k);
   end
   if strcmp(DecompOut,'on')
-      info.V = V;
-      info.U = U;
-      info.Z = Z;
-      info.T = T;
-      info.M = M;
+      info.V = V(:,1:k);
+      info.U = U(:,1:k+1);
+      info.Z = Z(:,1:k);
+      info.T = T(1:k,1:k);
+      info.M = M(1:k+1,1:k);
   end
   if restart
       info.ktotcount = ktotcount;
