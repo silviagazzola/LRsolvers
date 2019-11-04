@@ -1,5 +1,7 @@
 clear, clc
 
+IRtools_setup
+
 %% first generate the test problem
 optbl = PRblur('defaults');
 optbl = PRset(optbl, 'trueImage', 'dot2', 'BlurLevel', 'medium');
